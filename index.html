@@ -94,7 +94,7 @@
 </div>
 
 <div class="card" style="margin-top: 16px;">
-  <h2>Latency percentiles (milliseconds — lower is better, log scale)</h2>
+  <h2>Latency percentiles (milliseconds — lower is better, real proportion)</h2>
   <div class="chart-host tall"><canvas id="latency"></canvas></div>
 </div>
 
@@ -207,9 +207,9 @@ new Chart(document.getElementById('latency'), {
     },
     scales: {
       y: {
-        type: 'logarithmic',
-        grid: { color: G }, ticks: { color: M, callback: v => v + ' ms' },
-        title: { display: true, text: 'milliseconds (log scale)', color: M },
+        beginAtZero: true,
+        grid: { color: G }, ticks: { color: M, callback: v => v.toLocaleString() + ' ms' },
+        title: { display: true, text: 'milliseconds (linear scale — true proportion)', color: M },
       },
       x: { grid: { display: false }, ticks: { color: T } }
     },
