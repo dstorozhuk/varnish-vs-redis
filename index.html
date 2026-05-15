@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Varnish vs page_cache+Redis — 5000 req @ 500 conn</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --border: #262a33;
+    --text: #e7eaf0;
+    --muted: #8b94a4;
+    --varnish: #34d399;
+    --legacy: #fb923c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 24px 96px; }
+  header { margin-bottom: 28px; }
+  h1 { margin: 0 0 6px; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+  h1 small { display: block; color: var(--muted); font-size: 14px; font-weight: 400; letter-spacing: 0; margin-top: 6px; }
+  .grid { display: grid; gap: 16px; }
+  .grid.cards { grid-template-columns: 1fr 1fr; }
+  .grid.charts2 { grid-template-columns: 1fr 1fr; margin-top: 16px; }
+  @media (max-width: 800px) { .grid.cards, .grid.charts2 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .card h2 { margin: 0 0 14px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .hero .item { padding: 12px 14px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid var(--border); }
+  .hero .label { color: var(--muted); font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+  .hero .value { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-top: 4px; line-height: 1; }
+  .hero .unit { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 4px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.v { background: rgba(52, 211, 153, 0.15); color: var(--varnish); }
+  .badge.l { background: rgba(251, 146, 60, 0.15); color: var(--legacy); }
+  .chart-host { position: relative; height: 320px; }
+  .chart-host.tall { height: 360px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; color: var(--muted); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .ratio { color: var(--varnish); font-weight: 600; }
+  .footer { margin-top: 24px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .insights { margin-top: 16px; }
+  .insights h2 { display: flex; align-items: center; gap: 8px; }
+  .insights .pill { background: rgba(52,211,153,0.12); color: var(--varnish); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+  .insights ul { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+  .insights li { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-left: 3px solid var(--legacy); border-radius: 8px; padding: 14px 16px; color: var(--text); font-size: 14px; line-height: 1.55; }
+  .insights li.good { border-left-color: var(--varnish); }
+  .insights li b { color: var(--text); font-weight: 600; }
+  .insights li code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); }
+  .insights .num { display: inline-block; min-width: 56px; padding: 2px 8px; background: rgba(251,146,60,0.12); color: var(--legacy); border-radius: 4px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; margin-right: 8px; }
+  .insights li.good .num { background: rgba(52,211,153,0.12); color: var(--varnish); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>
+    Varnish vs Drupal page_cache + Redis
+    <small>hey&nbsp;-n&nbsp;5000&nbsp;-c&nbsp;500 → homepage / · 500 concurrent connections, 5000 total requests · runs were sequential to avoid CPU contention</small>
+  </h1>
+  <div style="margin-top: 10px;">
+    <span class="badge v">Varnish</span> <span style="color: var(--muted); font-size: 13px;">techraptor.net.ddev.site (this branch)</span>
+    &nbsp; • &nbsp;
+    <span class="badge l">page_cache + Redis</span> <span style="color: var(--muted); font-size: 13px;">techraptor2.local (current prod stack)</span>
+  </div>
+</header>
+
+<div class="grid cards">
+  <div class="card">
+    <h2><span class="badge v">Varnish</span></h2>
+    <div class="hero">
+      <div class="item"><div class="label">req / sec</div><div class="value">3,626</div></div>
+      <div class="item"><div class="label">avg latency</div><div class="value">112<span class="unit">ms</span></div></div>
+      <div class="item"><div class="label">total run</div><div class="value">1.38<span class="unit">s</span></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><span class="badge l">page_cache + Redis</span></h2>
+    <div class="hero">
+      <div class="item"><div class="label">req / sec</div><div class="value">453</div></div>
+      <div class="item"><div class="label">avg latency</div><div class="value">1,075<span class="unit">ms</span></div></div>
+      <div class="item"><div class="label">total run</div><div class="value">11.03<span class="unit">s</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+  <h2>Throughput (requests / second — higher is better)</h2>
+  <div class="chart-host"><canvas id="rps"></canvas></div>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+  <h2>Latency percentiles (milliseconds — lower is better, log scale)</h2>
+  <div class="chart-host tall"><canvas id="latency"></canvas></div>
+</div>
+
+<div class="grid charts2">
+  <div class="card">
+    <h2><span class="badge v">Varnish</span> Response-time histogram</h2>
+    <div class="chart-host"><canvas id="histVarnish"></canvas></div>
+  </div>
+  <div class="card">
+    <h2><span class="badge l">page_cache + Redis</span> Response-time histogram</h2>
+    <div class="chart-host"><canvas id="histLegacy"></canvas></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+  <h2>Side by side</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Varnish</th>
+        <th>page_cache + Redis</th>
+        <th>Speed-up</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Requests / second</td><td>3,625.61</td><td>453.13</td><td class="ratio">8.00×</td></tr>
+      <tr><td>Average latency</td><td>111.5&nbsp;ms</td><td>1,074.9&nbsp;ms</td><td class="ratio">9.64×</td></tr>
+      <tr><td>Fastest response</td><td>1.1&nbsp;ms</td><td>396.2&nbsp;ms</td><td class="ratio">360.2×</td></tr>
+      <tr><td>Slowest response</td><td>728.2&nbsp;ms</td><td>5953.1&nbsp;ms</td><td class="ratio">8.18×</td></tr>
+      <tr><td>P50</td><td>97.9&nbsp;ms</td><td>582.6&nbsp;ms</td><td class="ratio">5.95×</td></tr>
+      <tr><td>P75</td><td>130.8&nbsp;ms</td><td>642.6&nbsp;ms</td><td class="ratio">4.91×</td></tr>
+      <tr><td>P90</td><td>164.9&nbsp;ms</td><td>5073.9&nbsp;ms</td><td class="ratio">30.77×</td></tr>
+      <tr><td>P95</td><td>183.6&nbsp;ms</td><td>5442.4&nbsp;ms</td><td class="ratio">29.64×</td></tr>
+      <tr><td>P99</td><td>325.4&nbsp;ms</td><td>5709.3&nbsp;ms</td><td class="ratio">17.55×</td></tr>
+      <tr><td>Total run time (5000 req)</td><td>1.38&nbsp;s</td><td>11.03&nbsp;s</td><td class="ratio">8.00×</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card insights">
+  <h2>What the data shows <span class="pill">Bimodal tail</span></h2>
+  <ul>
+    <li>
+      <b>The page_cache + Redis distribution is bimodal.</b>
+      <span class="num">4,499</span> requests landed in <code>0.4–0.95 s</code> — that's while PHP-FPM workers can keep up with the queue.
+    </li>
+    <li>
+      <b>The legacy stack hits a hard cliff.</b>
+      <span class="num">500</span> requests are stranded in the <code>5.4–5.95 s</code> bucket — these are the ones that hit DNS retry / connection re-establishment once the worker pool saturates. You can see it on the histogram as an empty gap from <code>1 s</code> to <code>5 s</code> and a sharp wall at the end.
+    </li>
+    <li class="good">
+      <b>Varnish has no such cliff.</b>
+      Even its <span class="num">P99 = 325 ms</span> is lower than the legacy stack's <span class="num" style="background: rgba(251,146,60,0.12); color: var(--legacy);">P10 = 541 ms</span>.
+      That's the core advantage of serving straight from Varnish memory — the request never reaches PHP, so the worker pool simply cannot become the bottleneck.
+    </li>
+  </ul>
+</div>
+
+<div class="footer">
+  At 5× higher concurrency (500 vs 100 in the previous run) both stacks slow per-request but the gap stays huge — Varnish completes the entire 5,000-request burst in 1.38 s while the Redis stack takes 11.03 s. All 5,000 requests served HTTP 200 on both stacks.
+</div>
+
+</div>
+
+<script>
+const T = '#e7eaf0', M = '#8b94a4', G = 'rgba(255,255,255,0.07)';
+const VARNISH = '#34d399', LEGACY = '#fb923c';
+Chart.defaults.color = M;
+Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, Inter, sans-serif';
+Chart.defaults.font.size = 12;
+
+new Chart(document.getElementById('rps'), {
+  type: 'bar',
+  data: {
+    labels: ['Varnish', 'page_cache + Redis'],
+    datasets: [{
+      label: 'req / sec',
+      data: [3625.61, 453.13],
+      backgroundColor: [VARNISH, LEGACY],
+      borderRadius: 8,
+      borderSkipped: false,
+      barThickness: 60,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.x.toLocaleString() + ' req/s' } } },
+    scales: {
+      x: { grid: { color: G }, ticks: { color: M } },
+      y: { grid: { display: false }, ticks: { color: T, font: { size: 14, weight: '600' } } }
+    },
+    maintainAspectRatio: false,
+  }
+});
+
+new Chart(document.getElementById('latency'), {
+  type: 'bar',
+  data: {
+    labels: ['P10', 'P25', 'P50', 'P75', 'P90', 'P95', 'P99'],
+    datasets: [
+      { label: 'Varnish (ms)',           data: [68.0, 81.3, 97.9, 130.8, 164.9, 183.6, 325.4], backgroundColor: VARNISH, borderRadius: 6 },
+      { label: 'page_cache + Redis (ms)', data: [540.9, 560.5, 582.6, 642.6, 5073.9, 5442.4, 5709.3], backgroundColor: LEGACY, borderRadius: 6 },
+    ]
+  },
+  options: {
+    plugins: {
+      legend: { labels: { color: T, font: { size: 13 }, boxWidth: 14, boxHeight: 14, usePointStyle: true } },
+      tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() + ' ms' } },
+    },
+    scales: {
+      y: {
+        type: 'logarithmic',
+        grid: { color: G }, ticks: { color: M, callback: v => v + ' ms' },
+        title: { display: true, text: 'milliseconds (log scale)', color: M },
+      },
+      x: { grid: { display: false }, ticks: { color: T } }
+    },
+    maintainAspectRatio: false,
+  }
+});
+
+new Chart(document.getElementById('histVarnish'), {
+  type: 'bar',
+  data: {
+    labels: ['0.001s','0.074s','0.146s','0.219s','0.292s','0.365s','0.437s','0.510s','0.583s','0.655s','0.728s'],
+    datasets: [{ label: 'count', data: [1, 777, 3236, 821, 48, 98, 3, 0, 0, 0, 16], backgroundColor: VARNISH, borderRadius: 4 }]
+  },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: { x: { grid: { display: false }, ticks: { color: M, maxRotation: 0 } }, y: { grid: { color: G }, ticks: { color: M } } },
+    maintainAspectRatio: false,
+  }
+});
+
+new Chart(document.getElementById('histLegacy'), {
+  type: 'bar',
+  data: {
+    labels: ['0.396s','0.952s','1.508s','2.063s','2.619s','3.175s','3.730s','4.286s','4.842s','5.397s','5.953s'],
+    datasets: [{ label: 'count', data: [1, 4499, 0, 0, 0, 0, 0, 0, 0, 222, 278], backgroundColor: LEGACY, borderRadius: 4 }]
+  },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: { x: { grid: { display: false }, ticks: { color: M, maxRotation: 0 } }, y: { grid: { color: G }, ticks: { color: M } } },
+    maintainAspectRatio: false,
+  }
+});
+</script>
+</body>
+</html>
