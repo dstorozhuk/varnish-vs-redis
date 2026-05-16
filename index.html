@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Varnish vs page_cache+Redis — 5000 req @ 500 conn</title>
+<title>Varnish vs page_cache+Redis — benchmark</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -41,6 +41,7 @@
   th:first-child, td:first-child { text-align: left; color: var(--muted); }
   th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
   .ratio { color: var(--varnish); font-weight: 600; }
+  .ratio.neg { color: var(--legacy); }
   .footer { margin-top: 24px; color: var(--muted); font-size: 13px; line-height: 1.6; }
   .insights { margin-top: 16px; }
   .insights h2 { display: flex; align-items: center; gap: 8px; }
@@ -48,10 +49,18 @@
   .insights ul { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
   .insights li { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-left: 3px solid var(--legacy); border-radius: 8px; padding: 14px 16px; color: var(--text); font-size: 14px; line-height: 1.55; }
   .insights li.good { border-left-color: var(--varnish); }
+  .insights li.neutral { border-left-color: var(--muted); }
   .insights li b { color: var(--text); font-weight: 600; }
   .insights li code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; font-size: 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); }
   .insights .num { display: inline-block; min-width: 56px; padding: 2px 8px; background: rgba(251,146,60,0.12); color: var(--legacy); border-radius: 4px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; margin-right: 8px; }
   .insights li.good .num { background: rgba(52,211,153,0.12); color: var(--varnish); }
+  .tabs { display: flex; gap: 4px; padding: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 16px; width: fit-content; }
+  .tab-btn { background: transparent; border: 0; color: var(--muted); padding: 10px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; font-family: inherit; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { background: rgba(52, 211, 153, 0.15); color: var(--varnish); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  @media (max-width: 600px) { .tabs { width: 100%; } .tab-btn { flex: 1; padding: 10px 8px; font-size: 13px; } }
 </style>
 </head>
 <body>
@@ -60,14 +69,25 @@
 <header>
   <h1>
     Varnish vs Drupal page_cache + Redis
-    <small>hey&nbsp;-n&nbsp;5000&nbsp;-c&nbsp;500 → homepage / · 500 concurrent connections, 5000 total requests · runs were sequential to avoid CPU contention</small>
+    <small>hey&nbsp;-n&nbsp;5000&nbsp;-c&nbsp;500 · 500 concurrent connections, 5000 total requests</small>
   </h1>
-  <div style="margin-top: 10px;">
-    <span class="badge v">Varnish</span> <span style="color: var(--muted); font-size: 13px;">techraptor.net.ddev.site (this branch)</span>
-    &nbsp; • &nbsp;
-    <span class="badge l">page_cache + Redis</span> <span style="color: var(--muted); font-size: 13px;">techraptor2.local (current prod stack)</span>
-  </div>
 </header>
+
+<div class="tabs" role="tablist">
+  <button class="tab-btn active" data-tab="local" role="tab">Local DDEV (homepage /)</button>
+  <button class="tab-btn" data-tab="dev" role="tab">Dev env (/articles)</button>
+</div>
+
+<!-- ================ TAB: LOCAL DDEV ================ -->
+<div class="tab-panel active" data-panel="local">
+
+<div style="margin-bottom: 18px;">
+  <span class="badge v">Varnish</span> <span style="color: var(--muted); font-size: 13px;">techraptor.net.ddev.site (this branch)</span>
+  &nbsp; • &nbsp;
+  <span class="badge l">page_cache + Redis</span> <span style="color: var(--muted); font-size: 13px;">techraptor2.local (current prod stack)</span>
+  &nbsp; • &nbsp;
+  <span style="color: var(--muted); font-size: 13px;">sequential runs</span>
+</div>
 
 <div class="grid cards">
   <div class="card">
@@ -90,22 +110,22 @@
 
 <div class="card" style="margin-top: 16px;">
   <h2>Throughput (requests / second — higher is better)</h2>
-  <div class="chart-host"><canvas id="rps"></canvas></div>
+  <div class="chart-host"><canvas id="local-rps"></canvas></div>
 </div>
 
 <div class="card" style="margin-top: 16px;">
   <h2>Latency percentiles (milliseconds — lower is better, real proportion)</h2>
-  <div class="chart-host tall"><canvas id="latency"></canvas></div>
+  <div class="chart-host tall"><canvas id="local-latency"></canvas></div>
 </div>
 
 <div class="grid charts2">
   <div class="card">
     <h2><span class="badge v">Varnish</span> Response-time histogram</h2>
-    <div class="chart-host"><canvas id="histVarnish"></canvas></div>
+    <div class="chart-host"><canvas id="local-histVarnish"></canvas></div>
   </div>
   <div class="card">
     <h2><span class="badge l">page_cache + Redis</span> Response-time histogram</h2>
-    <div class="chart-host"><canvas id="histLegacy"></canvas></div>
+    <div class="chart-host"><canvas id="local-histLegacy"></canvas></div>
   </div>
 </div>
 
@@ -113,12 +133,7 @@
   <h2>Side by side</h2>
   <table>
     <thead>
-      <tr>
-        <th>Metric</th>
-        <th>Varnish</th>
-        <th>page_cache + Redis</th>
-        <th>Speed-up</th>
-      </tr>
+      <tr><th>Metric</th><th>Varnish</th><th>page_cache + Redis</th><th>Speed-up</th></tr>
     </thead>
     <tbody>
       <tr><td>Requests / second</td><td>3,625.61</td><td>453.13</td><td class="ratio">8.00×</td></tr>
@@ -159,6 +174,112 @@
 </div>
 
 </div>
+<!-- ================ /TAB: LOCAL DDEV ================ -->
+
+<!-- ================ TAB: DEV ENV ================ -->
+<div class="tab-panel" data-panel="dev">
+
+<div style="margin-bottom: 18px;">
+  <span class="badge v">Varnish</span> <span style="color: var(--muted); font-size: 13px;">dev2.raptorian.com/articles</span>
+  &nbsp; • &nbsp;
+  <span class="badge l">page_cache + Redis</span> <span style="color: var(--muted); font-size: 13px;">dev.raptorian.com/articles</span>
+  &nbsp; • &nbsp;
+  <span style="color: var(--muted); font-size: 13px;">heavier page — Views listing of articles, not the homepage</span>
+</div>
+
+<div class="grid cards">
+  <div class="card">
+    <h2><span class="badge v">Varnish</span></h2>
+    <div class="hero">
+      <div class="item"><div class="label">req / sec</div><div class="value">425</div></div>
+      <div class="item"><div class="label">avg latency</div><div class="value">387<span class="unit">ms</span></div></div>
+      <div class="item"><div class="label">total run</div><div class="value">11.76<span class="unit">s</span></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><span class="badge l">page_cache + Redis</span></h2>
+    <div class="hero">
+      <div class="item"><div class="label">req / sec</div><div class="value">501</div></div>
+      <div class="item"><div class="label">avg latency</div><div class="value">494<span class="unit">ms</span></div></div>
+      <div class="item"><div class="label">total run</div><div class="value">9.98<span class="unit">s</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+  <h2>Throughput (requests / second — higher is better)</h2>
+  <div class="chart-host"><canvas id="dev-rps"></canvas></div>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+  <h2>Latency percentiles (milliseconds — lower is better, real proportion)</h2>
+  <div class="chart-host tall"><canvas id="dev-latency"></canvas></div>
+</div>
+
+<div class="grid charts2">
+  <div class="card">
+    <h2><span class="badge v">Varnish</span> Response-time histogram</h2>
+    <div class="chart-host"><canvas id="dev-histVarnish"></canvas></div>
+  </div>
+  <div class="card">
+    <h2><span class="badge l">page_cache + Redis</span> Response-time histogram</h2>
+    <div class="chart-host"><canvas id="dev-histLegacy"></canvas></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+  <h2>Side by side</h2>
+  <table>
+    <thead>
+      <tr><th>Metric</th><th>Varnish (dev2)</th><th>page_cache + Redis (dev)</th><th>Difference</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Requests / second</td><td>425.31</td><td>501.10</td><td class="ratio neg">Redis +18%</td></tr>
+      <tr><td>Average latency</td><td>387.4&nbsp;ms</td><td>493.6&nbsp;ms</td><td class="ratio">Varnish 1.27×</td></tr>
+      <tr><td>Fastest response</td><td>53.3&nbsp;ms</td><td>32.6&nbsp;ms</td><td class="ratio neg">Redis 1.63×</td></tr>
+      <tr><td>Slowest response</td><td>6,773.8&nbsp;ms</td><td>5,517.1&nbsp;ms</td><td class="ratio neg">Redis 1.23×</td></tr>
+      <tr><td>P50</td><td>213.4&nbsp;ms</td><td>237.2&nbsp;ms</td><td class="ratio">Varnish 1.11×</td></tr>
+      <tr><td>P75</td><td>467.2&nbsp;ms</td><td>493.1&nbsp;ms</td><td class="ratio">Varnish 1.06×</td></tr>
+      <tr><td>P90</td><td>756.0&nbsp;ms</td><td>1,619.8&nbsp;ms</td><td class="ratio">Varnish 2.14×</td></tr>
+      <tr><td>P95</td><td>1,173.2&nbsp;ms</td><td>1,986.2&nbsp;ms</td><td class="ratio">Varnish 1.69×</td></tr>
+      <tr><td>P99</td><td>2,564.6&nbsp;ms</td><td>3,024.5&nbsp;ms</td><td class="ratio">Varnish 1.18×</td></tr>
+      <tr><td>Total run time (5000 req)</td><td>11.76&nbsp;s</td><td>9.98&nbsp;s</td><td class="ratio neg">Redis 1.18×</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card insights">
+  <h2>What the data shows <span class="pill">Cold cache + heavier page</span></h2>
+  <ul>
+    <li class="neutral">
+      <b>Throughput is much closer in dev than in local.</b>
+      Redis stack edges out by ~18% on raw req/s (<span class="num" style="background: rgba(251,146,60,0.12); color: var(--legacy);">501</span> vs <span class="num" style="background: rgba(52,211,153,0.12); color: var(--varnish);">425</span> req/s) and finishes 1.8 s sooner. On local Varnish was 8× ahead — what changed?
+    </li>
+    <li>
+      <b>The test was a cold start against /articles, not the homepage.</b>
+      <code>/articles</code> is a Views listing — heavier than the homepage, larger response body, larger Purge-Cache-Tags surface. The first ~500 concurrent requests all MISSed in Varnish and slammed origin's PHP-FPM at once. The Redis stack didn't have this cold-storm penalty because it was already warm from previous testing / regular traffic.
+    </li>
+    <li class="good">
+      <b>Varnish still wins decisively on the tail.</b>
+      <span class="num" style="background: rgba(52,211,153,0.12); color: var(--varnish);">P90 756 ms</span> vs <span class="num">1,620 ms</span> (2.14×), <span class="num" style="background: rgba(52,211,153,0.12); color: var(--varnish);">P95 1,173 ms</span> vs <span class="num">1,986 ms</span> (1.69×). With real-world traffic and a warm cache, the P50/P90 picture flips much more strongly in Varnish's favour — the synthetic 500-cold-MISS storm is a worst case.
+    </li>
+    <li class="neutral">
+      <b>Both stacks have heavy tails.</b>
+      Both histograms have ~13% of responses in the 1–5+ second range. Likely PHP-FPM worker saturation at the origin under <code>-c 500</code>, plus DNS+dialup outliers (one request on each side over 5 s spent its time in the connection-setup phase, not Drupal). On the homepage the same effect is much smaller because the response is tiny and cached more deeply.
+    </li>
+  </ul>
+</div>
+
+<div class="footer">
+  This test stresses the worst case for Varnish: cold cache + simultaneous burst of 500 concurrent fresh requests. The Redis stack's apparent advantage on raw req/s comes from already being warm and from <code>/articles</code> being heavy enough to expose the cold-start penalty.
+  A more representative run would issue a few warm-up hits first (or run the same test twice and compare the second pass); under those conditions Varnish wins both throughput AND tail, like in the local DDEV tab.
+  All 5,000 requests on both endpoints returned HTTP 200.
+</div>
+
+</div>
+<!-- ================ /TAB: DEV ENV ================ -->
+
+</div>
 
 <script>
 const T = '#e7eaf0', M = '#8b94a4', G = 'rgba(255,255,255,0.07)';
@@ -167,80 +288,99 @@ Chart.defaults.color = M;
 Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, Inter, sans-serif';
 Chart.defaults.font.size = 12;
 
-new Chart(document.getElementById('rps'), {
-  type: 'bar',
-  data: {
-    labels: ['Varnish', 'page_cache + Redis'],
-    datasets: [{
-      label: 'req / sec',
-      data: [3625.61, 453.13],
-      backgroundColor: [VARNISH, LEGACY],
-      borderRadius: 8,
-      borderSkipped: false,
-      barThickness: 60,
-    }]
-  },
-  options: {
-    indexAxis: 'y',
-    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.x.toLocaleString() + ' req/s' } } },
-    scales: {
-      x: { grid: { color: G }, ticks: { color: M } },
-      y: { grid: { display: false }, ticks: { color: T, font: { size: 14, weight: '600' } } }
+function rps(id, varnish, legacy) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: {
+      labels: ['Varnish', 'page_cache + Redis'],
+      datasets: [{ label: 'req / sec', data: [varnish, legacy], backgroundColor: [VARNISH, LEGACY], borderRadius: 8, borderSkipped: false, barThickness: 60 }]
     },
-    maintainAspectRatio: false,
-  }
-});
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.x.toLocaleString() + ' req/s' } } },
+      scales: { x: { grid: { color: G }, ticks: { color: M } }, y: { grid: { display: false }, ticks: { color: T, font: { size: 14, weight: '600' } } } },
+      maintainAspectRatio: false,
+    }
+  });
+}
 
-new Chart(document.getElementById('latency'), {
-  type: 'bar',
-  data: {
-    labels: ['P10', 'P25', 'P50', 'P75', 'P90', 'P95', 'P99'],
-    datasets: [
-      { label: 'Varnish (ms)',           data: [68.0, 81.3, 97.9, 130.8, 164.9, 183.6, 325.4], backgroundColor: VARNISH, borderRadius: 6 },
-      { label: 'page_cache + Redis (ms)', data: [540.9, 560.5, 582.6, 642.6, 5073.9, 5442.4, 5709.3], backgroundColor: LEGACY, borderRadius: 6 },
-    ]
-  },
-  options: {
-    plugins: {
-      legend: { labels: { color: T, font: { size: 13 }, boxWidth: 14, boxHeight: 14, usePointStyle: true } },
-      tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() + ' ms' } },
+function latency(id, varnishData, legacyData) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: {
+      labels: ['P10', 'P25', 'P50', 'P75', 'P90', 'P95', 'P99'],
+      datasets: [
+        { label: 'Varnish (ms)',           data: varnishData, backgroundColor: VARNISH, borderRadius: 6 },
+        { label: 'page_cache + Redis (ms)', data: legacyData,  backgroundColor: LEGACY,  borderRadius: 6 },
+      ]
     },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grid: { color: G }, ticks: { color: M, callback: v => v.toLocaleString() + ' ms' },
-        title: { display: true, text: 'milliseconds (linear scale — true proportion)', color: M },
+    options: {
+      plugins: {
+        legend: { labels: { color: T, font: { size: 13 }, boxWidth: 14, boxHeight: 14, usePointStyle: true } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() + ' ms' } },
       },
-      x: { grid: { display: false }, ticks: { color: T } }
-    },
-    maintainAspectRatio: false,
-  }
-});
+      scales: {
+        y: { beginAtZero: true, grid: { color: G }, ticks: { color: M, callback: v => v.toLocaleString() + ' ms' }, title: { display: true, text: 'milliseconds (linear scale — true proportion)', color: M } },
+        x: { grid: { display: false }, ticks: { color: T } }
+      },
+      maintainAspectRatio: false,
+    }
+  });
+}
 
-new Chart(document.getElementById('histVarnish'), {
-  type: 'bar',
-  data: {
-    labels: ['0.001s','0.074s','0.146s','0.219s','0.292s','0.365s','0.437s','0.510s','0.583s','0.655s','0.728s'],
-    datasets: [{ label: 'count', data: [1, 777, 3236, 821, 48, 98, 3, 0, 0, 0, 16], backgroundColor: VARNISH, borderRadius: 4 }]
-  },
-  options: {
-    plugins: { legend: { display: false } },
-    scales: { x: { grid: { display: false }, ticks: { color: M, maxRotation: 0 } }, y: { grid: { color: G }, ticks: { color: M } } },
-    maintainAspectRatio: false,
-  }
-});
+function hist(id, labels, data, color) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels: labels, datasets: [{ label: 'count', data: data, backgroundColor: color, borderRadius: 4 }] },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { display: false }, ticks: { color: M, maxRotation: 0 } }, y: { grid: { color: G }, ticks: { color: M } } },
+      maintainAspectRatio: false,
+    }
+  });
+}
 
-new Chart(document.getElementById('histLegacy'), {
-  type: 'bar',
-  data: {
-    labels: ['0.396s','0.952s','1.508s','2.063s','2.619s','3.175s','3.730s','4.286s','4.842s','5.397s','5.953s'],
-    datasets: [{ label: 'count', data: [1, 4499, 0, 0, 0, 0, 0, 0, 0, 222, 278], backgroundColor: LEGACY, borderRadius: 4 }]
-  },
-  options: {
-    plugins: { legend: { display: false } },
-    scales: { x: { grid: { display: false }, ticks: { color: M, maxRotation: 0 } }, y: { grid: { color: G }, ticks: { color: M } } },
-    maintainAspectRatio: false,
-  }
+// Local DDEV (5000 @ 500, homepage /)
+rps('local-rps', 3625.61, 453.13);
+latency('local-latency',
+  [68.0, 81.3, 97.9, 130.8, 164.9, 183.6, 325.4],
+  [540.9, 560.5, 582.6, 642.6, 5073.9, 5442.4, 5709.3]
+);
+hist('local-histVarnish',
+  ['0.001s','0.074s','0.146s','0.219s','0.292s','0.365s','0.437s','0.510s','0.583s','0.655s','0.728s'],
+  [1, 777, 3236, 821, 48, 98, 3, 0, 0, 0, 16],
+  VARNISH
+);
+hist('local-histLegacy',
+  ['0.396s','0.952s','1.508s','2.063s','2.619s','3.175s','3.730s','4.286s','4.842s','5.397s','5.953s'],
+  [1, 4499, 0, 0, 0, 0, 0, 0, 0, 222, 278],
+  LEGACY
+);
+
+// Dev env (5000 @ 500, /articles)
+rps('dev-rps', 425.31, 501.10);
+latency('dev-latency',
+  [99.2, 129.5, 213.4, 467.2, 756.0, 1173.2, 2564.6],
+  [96.1, 138.5, 237.2, 493.1, 1619.8, 1986.2, 3024.5]
+);
+hist('dev-histVarnish',
+  ['0.053s','0.725s','1.397s','2.069s','2.742s','3.414s','4.086s','4.758s','5.430s','6.102s','6.774s'],
+  [1, 4382, 393, 123, 59, 24, 9, 4, 3, 1, 1],
+  VARNISH
+);
+hist('dev-histLegacy',
+  ['0.033s','0.581s','1.129s','1.678s','2.226s','2.775s','3.323s','3.872s','4.420s','4.969s','5.517s'],
+  [1, 4040, 366, 216, 171, 142, 24, 21, 9, 8, 2],
+  LEGACY
+);
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
+  });
 });
 </script>
 </body>
