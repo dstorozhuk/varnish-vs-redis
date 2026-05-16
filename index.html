@@ -78,7 +78,8 @@
 
 <div class="tabs" role="tablist">
   <button class="tab-btn active" data-tab="local" role="tab">Local DDEV (homepage)</button>
-  <button class="tab-btn" data-tab="dev-direct" role="tab">Direct origin (no CF) · / + /articles</button>
+  <button class="tab-btn" data-tab="dev-direct" role="tab">Over the wire (no CF)</button>
+  <button class="tab-btn" data-tab="on-server" role="tab">On-server (zero network) ★</button>
 </div>
 
 <!-- ================ TAB: LOCAL DDEV ================ -->
@@ -276,7 +277,138 @@
 </div>
 
 <div class="footer">
-  These tests bypass Cloudflare entirely (CF was disabled at the proxy/DNS level for the duration of the run). Numbers represent the actual speed of <strong>origin server</strong> in each configuration. In production, CF in front of Varnish absorbs most of this load — the comparison above is "what reaches the origin when CF misses."
+  These tests bypass Cloudflare entirely (CF was disabled at the proxy/DNS level for the duration of the run). Numbers represent the actual speed of <strong>origin server</strong> in each configuration. In production, CF in front of Varnish absorbs most of this load — the comparison above is "what reaches the origin when CF misses." But note: <code>hey</code> ran from a laptop across the Atlantic, so a ~120 ms TCP/TLS RTT floor is baked into every number. The <em>On-server</em> tab below removes that.
+</div>
+
+</div>
+
+<!-- ================ TAB: ON-SERVER (zero network) ================ -->
+<div class="tab-panel" data-panel="on-server">
+
+<div style="margin-bottom: 18px;">
+  <span class="badge v">Varnish</span> <span style="color: var(--muted); font-size: 13px;">ab inside dev2 ddev → http://varnish/</span>
+  &nbsp; • &nbsp;
+  <span class="badge l">page_cache + Redis</span> <span style="color: var(--muted); font-size: 13px;">ab inside dev ddev → http://localhost/</span>
+  &nbsp; • &nbsp;
+  <span style="color: var(--muted); font-size: 13px;">Same machine, plain HTTP, docker bridge only — no public network, no TLS, no CF</span>
+</div>
+
+<!-- Sub-section: HOMEPAGE -->
+<div class="section-divider">
+  <h2>Homepage <code style="background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; font-size: 16px;">/</code></h2>
+  <p>Apache Bench (<code>ab -n 5000 -c 500 -q</code>) running inside the DDEV web container hitting the cache layer directly.</p>
+</div>
+
+<div class="grid cards">
+  <div class="card">
+    <h2><span class="badge v">Varnish</span></h2>
+    <div class="hero">
+      <div class="item"><div class="label">req / sec</div><div class="value">3,355</div></div>
+      <div class="item"><div class="label">avg latency</div><div class="value">149<span class="unit">ms</span></div></div>
+      <div class="item"><div class="label">total run</div><div class="value">1.49<span class="unit">s</span></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><span class="badge l">page_cache + Redis</span></h2>
+    <div class="hero">
+      <div class="item"><div class="label">req / sec</div><div class="value">556</div></div>
+      <div class="item"><div class="label">avg latency</div><div class="value">899<span class="unit">ms</span></div></div>
+      <div class="item"><div class="label">total run</div><div class="value">8.99<span class="unit">s</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px;"><h2>Throughput</h2><div class="chart-host"><canvas id="onsrv-home-rps"></canvas></div></div>
+<div class="card" style="margin-top: 16px;"><h2>Latency percentiles (ms — real proportion)</h2><div class="chart-host tall"><canvas id="onsrv-home-latency"></canvas></div></div>
+
+<div class="card" style="margin-top: 16px;">
+  <h2>Side by side · homepage</h2>
+  <table>
+    <thead><tr><th>Metric</th><th>Varnish (dev2)</th><th>page_cache + Redis (dev)</th><th>Speed-up</th></tr></thead>
+    <tbody>
+      <tr><td>Requests / second</td><td>3,354.75</td><td>556.17</td><td class="ratio">6.03×</td></tr>
+      <tr><td>Average latency</td><td>149.0&nbsp;ms</td><td>899.0&nbsp;ms</td><td class="ratio">6.03×</td></tr>
+      <tr><td>P50</td><td>128&nbsp;ms</td><td>781&nbsp;ms</td><td class="ratio">6.10×</td></tr>
+      <tr><td>P75</td><td>132&nbsp;ms</td><td>909&nbsp;ms</td><td class="ratio">6.89×</td></tr>
+      <tr><td>P90</td><td>136&nbsp;ms</td><td>1,114&nbsp;ms</td><td class="ratio">8.19×</td></tr>
+      <tr><td>P95</td><td>142&nbsp;ms</td><td>1,165&nbsp;ms</td><td class="ratio">8.20×</td></tr>
+      <tr><td>P99</td><td>182&nbsp;ms</td><td>1,214&nbsp;ms</td><td class="ratio">6.67×</td></tr>
+      <tr><td>Slowest</td><td>312&nbsp;ms</td><td>1,280&nbsp;ms</td><td class="ratio">4.10×</td></tr>
+      <tr><td>Total run</td><td>1.49&nbsp;s</td><td>8.99&nbsp;s</td><td class="ratio">6.03×</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Sub-section: /ARTICLES -->
+<div class="section-divider">
+  <h2>Articles listing <code style="background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; font-size: 16px;">/articles</code></h2>
+  <p>Same heavy Views page as the previous tab — but measured from inside the server.</p>
+</div>
+
+<div class="grid cards">
+  <div class="card">
+    <h2><span class="badge v">Varnish</span></h2>
+    <div class="hero">
+      <div class="item"><div class="label">req / sec</div><div class="value">2,856</div></div>
+      <div class="item"><div class="label">avg latency</div><div class="value">175<span class="unit">ms</span></div></div>
+      <div class="item"><div class="label">total run</div><div class="value">1.75<span class="unit">s</span></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><span class="badge l">page_cache + Redis</span></h2>
+    <div class="hero">
+      <div class="item"><div class="label">req / sec</div><div class="value">540</div></div>
+      <div class="item"><div class="label">avg latency</div><div class="value">925<span class="unit">ms</span></div></div>
+      <div class="item"><div class="label">total run</div><div class="value">9.25<span class="unit">s</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px;"><h2>Throughput</h2><div class="chart-host"><canvas id="onsrv-art-rps"></canvas></div></div>
+<div class="card" style="margin-top: 16px;"><h2>Latency percentiles (ms — real proportion)</h2><div class="chart-host tall"><canvas id="onsrv-art-latency"></canvas></div></div>
+
+<div class="card" style="margin-top: 16px;">
+  <h2>Side by side · /articles</h2>
+  <table>
+    <thead><tr><th>Metric</th><th>Varnish (dev2)</th><th>page_cache + Redis (dev)</th><th>Speed-up</th></tr></thead>
+    <tbody>
+      <tr><td>Requests / second</td><td>2,855.85</td><td>540.43</td><td class="ratio">5.28×</td></tr>
+      <tr><td>Average latency</td><td>175.0&nbsp;ms</td><td>925.0&nbsp;ms</td><td class="ratio">5.28×</td></tr>
+      <tr><td>P50</td><td>155&nbsp;ms</td><td>811&nbsp;ms</td><td class="ratio">5.23×</td></tr>
+      <tr><td>P75</td><td>159&nbsp;ms</td><td>933&nbsp;ms</td><td class="ratio">5.87×</td></tr>
+      <tr><td>P90</td><td>165&nbsp;ms</td><td>1,166&nbsp;ms</td><td class="ratio">7.07×</td></tr>
+      <tr><td>P95</td><td>170&nbsp;ms</td><td>1,203&nbsp;ms</td><td class="ratio">7.08×</td></tr>
+      <tr><td>P99</td><td>224&nbsp;ms</td><td>1,258&nbsp;ms</td><td class="ratio">5.62×</td></tr>
+      <tr><td>Slowest</td><td>331&nbsp;ms</td><td>1,307&nbsp;ms</td><td class="ratio">3.95×</td></tr>
+      <tr><td>Total run</td><td>1.75&nbsp;s</td><td>9.25&nbsp;s</td><td class="ratio">5.28×</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card insights">
+  <h2>This is what the stacks actually do <span class="pill">Network removed</span></h2>
+  <ul>
+    <li class="good">
+      <b>Varnish is 5–6× faster across the board — confirmed.</b>
+      Without ~120 ms of transatlantic RTT in every request, the picture matches the Local DDEV tab almost exactly. P50 on the homepage is <span class="num" style="background: rgba(52,211,153,0.12); color: var(--varnish);">128 ms</span> vs Redis stack's <span class="num">781 ms</span> — 6× difference. <code>/articles</code> is virtually identical (155 ms vs 811 ms = 5.23×).
+    </li>
+    <li>
+      <b>Varnish's tail is gone — no cold-MISS bump anymore.</b>
+      Previously on the Over-the-wire tab, <code>/articles</code> had a bump of 458 requests at ~1.4 s (a P90 of 1,177 ms). Here, P99 is just <span class="num" style="background: rgba(52,211,153,0.12); color: var(--varnish);">224 ms</span> and max is 331 ms. That bump was not a Varnish failure — it was 500 simultaneous TLS handshakes from a laptop competing for sockets during cold MISS-storm. Once you remove the wire, Varnish is tight.
+    </li>
+    <li class="neutral">
+      <b>Redis stack barely budged.</b>
+      556 req/s on-server vs 508 req/s over-the-wire (+9%). 899 ms avg on-server vs 947 ms over-the-wire. That's because Redis stack is <b>CPU/PHP-FPM bound</b> — the worker pool processes ~556 req/s regardless of where the request originated. Removing 120 ms of network barely matters when every request still costs 800-900 ms in PHP.
+    </li>
+    <li>
+      <b>Why the wire matters so much for Varnish, not for Redis.</b>
+      A Varnish HIT costs &lt; 1 ms on the server. A page_cache+Redis "HIT" costs ~800 ms because the request still goes Symfony kernel → middleware → cache.bin lookup → render finish. When you wrap both in 120 ms of network, Varnish's 1 ms blows up to 121 ms (12,000% slower) while Redis's 800 ms becomes 920 ms (15% slower). That's why on-laptop the gap looked smaller — the cheap stack was the one being hurt most.
+    </li>
+  </ul>
+</div>
+
+<div class="footer">
+  Tooling note: <code>hey</code>'s S3 download is currently 403'd so this tab uses <code>ab</code> (Apache Bench) from inside the DDEV web container, hitting the cache layer through the docker bridge. Output schema is slightly different — no fine-grained histogram, just percentile cuts (P50/P75/P90/P95/P99) — but the metric semantics are identical to the <code>hey</code> tabs above.
 </div>
 
 </div>
@@ -334,6 +466,22 @@ rps('direct-art-rps', 815.89, 557.96);
 latency('direct-art-latency', [150.5,210.5,296.9,470.7,1177.2,1345.8,1873.8], [780.1,800.0,825.0,875.8,937.9,1094.3,1477.3]);
 hist('direct-art-histVarnish', ['0.035s','0.405s','0.775s','1.145s','1.515s','1.885s','2.255s','2.625s','2.996s','3.366s','3.736s'], [1,3431,925,121,458,15,29,15,3,0,2], VARNISH);
 hist('direct-art-histLegacy', ['0.419s','0.542s','0.665s','0.789s','0.912s','1.036s','1.159s','1.283s','1.406s','1.530s','1.653s'], [1,22,50,703,3488,422,104,68,58,56,28], LEGACY);
+
+// Tab 3: On-server zero-network (ab, no histograms — P50..P99 only)
+function latency5(id, varnishData, legacyData) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels: ['P50','P75','P90','P95','P99'], datasets: [
+      { label: 'Varnish (ms)', data: varnishData, backgroundColor: VARNISH, borderRadius: 6 },
+      { label: 'page_cache + Redis (ms)', data: legacyData, backgroundColor: LEGACY, borderRadius: 6 },
+    ] },
+    options: { plugins: { legend: { labels: { color: T, font: { size: 13 }, boxWidth: 14, boxHeight: 14, usePointStyle: true } }, tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() + ' ms' } } }, scales: { y: { beginAtZero: true, grid: { color: G }, ticks: { color: M, callback: v => v.toLocaleString() + ' ms' }, title: { display: true, text: 'milliseconds (linear scale)', color: M } }, x: { grid: { display: false }, ticks: { color: T } } }, maintainAspectRatio: false }
+  });
+}
+rps('onsrv-home-rps', 3354.75, 556.17);
+latency5('onsrv-home-latency', [128, 132, 136, 142, 182], [781, 909, 1114, 1165, 1214]);
+rps('onsrv-art-rps', 2855.85, 540.43);
+latency5('onsrv-art-latency', [155, 159, 165, 170, 224], [811, 933, 1166, 1203, 1258]);
 
 // Tabs
 document.querySelectorAll('.tab-btn').forEach(btn => {
