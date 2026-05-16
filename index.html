@@ -78,7 +78,6 @@
 
 <div class="tabs" role="tablist">
   <button class="tab-btn active" data-tab="local" role="tab">Local DDEV (homepage)</button>
-  <button class="tab-btn" data-tab="dev-cf" role="tab">Dev env w/ Cloudflare</button>
   <button class="tab-btn" data-tab="dev-direct" role="tab">Direct origin (no CF) · / + /articles</button>
 </div>
 
@@ -150,55 +149,6 @@
     <li><b>The page_cache + Redis distribution is bimodal.</b> <span class="num">4,499</span> requests landed in <code>0.4–0.95 s</code>.</li>
     <li><b>The legacy stack hits a hard cliff.</b> <span class="num">500</span> requests are stranded in the <code>5.4–5.95 s</code> bucket — once the worker pool saturates the tail collapses to 5 s.</li>
     <li class="good"><b>Varnish has no such cliff.</b> Even its <span class="num">P99 = 325 ms</span> is lower than the legacy stack's <span class="num" style="background: rgba(251,146,60,0.12); color: var(--legacy);">P10 = 541 ms</span>. The request never reaches PHP, so the worker pool simply cannot become the bottleneck.</li>
-  </ul>
-</div>
-
-</div>
-
-<!-- ================ TAB: DEV ENV W/ CF ================ -->
-<div class="tab-panel" data-panel="dev-cf">
-
-<div style="margin-bottom: 18px;">
-  <span class="badge v">Varnish</span> <span style="color: var(--muted); font-size: 13px;">dev2.raptorian.com/articles</span>
-  &nbsp; • &nbsp;
-  <span class="badge l">page_cache + Redis</span> <span style="color: var(--muted); font-size: 13px;">dev.raptorian.com/articles</span>
-  &nbsp; • &nbsp;
-  <span style="color: var(--muted); font-size: 13px;">⚠ Cloudflare cached one side and not the other — skewed result, see Direct origin tab</span>
-</div>
-
-<div class="grid cards">
-  <div class="card">
-    <h2><span class="badge v">Varnish</span></h2>
-    <div class="hero">
-      <div class="item"><div class="label">req / sec</div><div class="value">425</div></div>
-      <div class="item"><div class="label">avg latency</div><div class="value">387<span class="unit">ms</span></div></div>
-      <div class="item"><div class="label">total run</div><div class="value">11.76<span class="unit">s</span></div></div>
-    </div>
-  </div>
-  <div class="card">
-    <h2><span class="badge l">page_cache + Redis</span></h2>
-    <div class="hero">
-      <div class="item"><div class="label">req / sec</div><div class="value">501</div></div>
-      <div class="item"><div class="label">avg latency</div><div class="value">494<span class="unit">ms</span></div></div>
-      <div class="item"><div class="label">total run</div><div class="value">9.98<span class="unit">s</span></div></div>
-    </div>
-  </div>
-</div>
-
-<div class="card" style="margin-top: 16px;"><h2>Throughput (requests / second)</h2><div class="chart-host"><canvas id="devcf-rps"></canvas></div></div>
-<div class="card" style="margin-top: 16px;"><h2>Latency percentiles (ms — real proportion)</h2><div class="chart-host tall"><canvas id="devcf-latency"></canvas></div></div>
-<div class="grid charts2">
-  <div class="card"><h2><span class="badge v">Varnish</span> Histogram</h2><div class="chart-host"><canvas id="devcf-histVarnish"></canvas></div></div>
-  <div class="card"><h2><span class="badge l">page_cache + Redis</span> Histogram</h2><div class="chart-host"><canvas id="devcf-histLegacy"></canvas></div></div>
-</div>
-
-<div class="card insights">
-  <h2>Why this test is misleading <span class="pill" style="background: rgba(251,146,60,0.15); color: var(--legacy);">CF asymmetry</span></h2>
-  <ul>
-    <li><b>CloudFlare was caching one side and not the other.</b> Inspecting headers later showed <code>dev/articles</code> had <code>cf-cache-status: HIT, age=2579</code> (CF served from edge) while <code>dev2/articles</code> had <code>cf-cache-status: DYNAMIC</code> (CF tunneled every request to origin). dev2 had no CF Page Rule for "Cache Everything" while dev did.</li>
-    <li><b>So dev's apparent "win" on req/s came from CF, not from the Redis stack.</b> Varnish was actually HITting at origin (<code>x-varnish-hits: 5005</code>), but the client paid the full client → CF → origin round-trip for every request.</li>
-    <li class="good"><b>Even with that handicap, Varnish still won the tail decisively:</b> P90 <span class="num" style="background: rgba(52,211,153,0.12); color: var(--varnish);">756 ms</span> vs <span class="num">1,620 ms</span>, P95 <span class="num" style="background: rgba(52,211,153,0.12); color: var(--varnish);">1,173 ms</span> vs <span class="num">1,986 ms</span>.</li>
-    <li class="neutral"><b>The next tab (Direct origin) reruns with CF disabled — apples-to-apples.</b></li>
   </ul>
 </div>
 
@@ -373,19 +323,13 @@ latency('local-latency', [68.0,81.3,97.9,130.8,164.9,183.6,325.4], [540.9,560.5,
 hist('local-histVarnish', ['0.001s','0.074s','0.146s','0.219s','0.292s','0.365s','0.437s','0.510s','0.583s','0.655s','0.728s'], [1,777,3236,821,48,98,3,0,0,0,16], VARNISH);
 hist('local-histLegacy', ['0.396s','0.952s','1.508s','2.063s','2.619s','3.175s','3.730s','4.286s','4.842s','5.397s','5.953s'], [1,4499,0,0,0,0,0,0,0,222,278], LEGACY);
 
-// Tab 2: Dev env w/ CF (5000 @ 500, /articles, CF cached only dev/articles)
-rps('devcf-rps', 425.31, 501.10);
-latency('devcf-latency', [99.2,129.5,213.4,467.2,756.0,1173.2,2564.6], [96.1,138.5,237.2,493.1,1619.8,1986.2,3024.5]);
-hist('devcf-histVarnish', ['0.053s','0.725s','1.397s','2.069s','2.742s','3.414s','4.086s','4.758s','5.430s','6.102s','6.774s'], [1,4382,393,123,59,24,9,4,3,1,1], VARNISH);
-hist('devcf-histLegacy', ['0.033s','0.581s','1.129s','1.678s','2.226s','2.775s','3.323s','3.872s','4.420s','4.969s','5.517s'], [1,4040,366,216,171,142,24,21,9,8,2], LEGACY);
-
-// Tab 3a: Direct origin homepage (CF off)
+// Tab 2a: Direct origin homepage (CF off)
 rps('direct-home-rps', 1215.02, 507.76);
 latency('direct-home-latency', [126.2,162.3,226.0,365.9,547.6,678.5,1153.1], [760.3,792.6,846.7,1040.6,1310.6,1414.3,1789.2]);
 hist('direct-home-histVarnish', ['0.038s','0.320s','0.601s','0.883s','1.164s','1.446s','1.727s','2.009s','2.290s','2.572s','2.853s'], [1,3486,1141,249,80,34,6,2,0,0,1], VARNISH);
 hist('direct-home-histLegacy', ['0.423s','0.579s','0.736s','0.892s','1.049s','1.205s','1.362s','1.519s','1.675s','1.832s','1.988s'], [1,37,77,2834,827,482,396,196,61,56,33], LEGACY);
 
-// Tab 3b: Direct origin /articles (CF off)
+// Tab 2b: Direct origin /articles (CF off)
 rps('direct-art-rps', 815.89, 557.96);
 latency('direct-art-latency', [150.5,210.5,296.9,470.7,1177.2,1345.8,1873.8], [780.1,800.0,825.0,875.8,937.9,1094.3,1477.3]);
 hist('direct-art-histVarnish', ['0.035s','0.405s','0.775s','1.145s','1.515s','1.885s','2.255s','2.625s','2.996s','3.366s','3.736s'], [1,3431,925,121,458,15,29,15,3,0,2], VARNISH);
